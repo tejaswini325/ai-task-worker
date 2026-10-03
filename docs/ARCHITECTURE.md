@@ -6,7 +6,7 @@
 | `worker/agent.py` | Loop: LLM call → one tool call → observation → repeat. Context compaction, loop detection, step budget, trace + result files. Zero task-specific code. |
 | `worker/tools.py` | Tool schemas + `Toolbox`: browser, memory, ask_user, files, finish. Holds the runtime guardrails (approval gate, `dirty` flag, sandboxed paths, error containment). |
 | `worker/browser.py` | Text browser: fetch (allow-listed, GET retries), parse HTML into page text + numbered elements, fill/submit forms. |
-| `worker/llm.py` | `AnthropicLLM.complete(system, messages, tools) -> Reply`. The only model-specific file. |
+| `worker/llm.py` | `GroqLLM` (default) / `AnthropicLLM`: `complete(system, messages, tools) -> Reply`; converts history to the provider's format. The only model-specific file. |
 | `worker/io.py` | Console channel for logs, `ask_user`, write approvals. |
 | `mockcorp/app.py` | Sandbox company: vendor portal + ERP with deliberate faults. |
 | `environment.md` | Only per-deployment config: which systems exist, URLs, sandbox creds. |
@@ -15,7 +15,7 @@
 ```mermaid
 sequenceDiagram
   participant A as Agent loop
-  participant L as LLM (Claude)
+  participant L as LLM (Groq)
   participant T as Toolbox
   participant B as Browser
   participant U as User

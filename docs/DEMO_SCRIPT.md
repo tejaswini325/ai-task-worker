@@ -1,6 +1,6 @@
 # Demo video script (target 3–4 min, screen + voice)
 
-Setup before recording: fresh terminal, large font, `export ANTHROPIC_API_KEY=...`, `rm -rf runs`, repo open in editor.
+Setup before recording: fresh terminal, large font, `export GROQ_API_KEY=...`, `rm -rf runs`, repo open in editor.
 Tip: record at 1080p (OBS / Loom / QuickTime), upload unlisted to YouTube or Loom, paste the link in the form.
 
 **0:00 – Intro (20s)** — show README top.
@@ -25,7 +25,7 @@ Then show the printed **ground truth** line and `runs/<ts>/trace.jsonl`.
 
 **2:50 – Scenario 3: denial (20s)** — `make demo3`, answer `n`. Show ground truth `[]` and status BLOCKED.
 
-**3:10 – Guardrail proof (25s)** — `make test` → 6 passed; mention the tests use a scripted model to prove recovery,
+**3:10 – Guardrail proof (25s)** — `make test` → 9 passed; mention the tests use a scripted model to prove recovery,
 gating and verify-before-finish deterministically.
 
 **3:35 – Close (20s)**

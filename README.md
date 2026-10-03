@@ -13,11 +13,13 @@ Docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/DEMO_SCRIPT.md`](
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...        # optional: WORKER_MODEL=claude-sonnet-5-5 (default)
+export GROQ_API_KEY=gsk_...                 # free key: console.groq.com; default model llama-3.3-70b-versatile
 make demo1                                  # or: python run.py "<task>"  — starts the bundled mock company on :5001 and runs the agent
-pytest -q                                   # 6 harness tests, no API key needed
+pytest -q                                   # 9 tests (harness + LLM adapter), no API key needed
 ```
-Flags: `--yes` auto-approve writes (default asks `y/N`), `--no-mock` point at your own sandbox, `--max-steps`, `--env`.
+Flags: `--provider groq|anthropic`, `--model <id>` (or `WORKER_MODEL`), `--yes` auto-approve writes (default asks `y/N`), `--no-mock` point at your own sandbox, `--max-steps`, `--env`.
+Groq notes: the free tier has per-minute token limits; the SDK auto-backs-off on 429s, so a run may pause briefly. If a model
+misbehaves with tools, try `--model` with another Groq tool-capable model. Malformed tool calls are re-sampled automatically.
 Every run writes `runs/<ts>/trace.jsonl` (every action + observation), `final_page.txt`, `result.json`.
 `python -m mockcorp.app` serves the mock company for manual poking.
 
@@ -32,7 +34,7 @@ Every run writes `runs/<ts>/trace.jsonl` (every action + observation), `final_pa
 ## Architecture
 ```
  task ──► Agent loop ───────────────┐   (worker/agent.py — no task-specific code)
-          │ LLM (Claude, tool use)  │
+          │ LLM (Groq, tool use)  │
           ▼                         │ observation
         Toolbox (worker/tools.py) ──┘
    ┌──────┼───────────┬───────────┬──────────┐
@@ -72,7 +74,7 @@ Every run writes `runs/<ts>/trace.jsonl` (every action + observation), `final_pa
 * **No framework** (LangChain etc.) – ~600 lines I can fully explain and modify live.
 
 ## Models / services / libraries
-Anthropic Claude via the official `anthropic` SDK (tool use; default `claude-sonnet-5-5`), `requests`,
+Groq API (free tier) via the `groq` SDK, OpenAI-style tool calling, default model `llama-3.3-70b-versatile` (swappable with `--model`; an Anthropic adapter is included but optional), `requests`,
 `beautifulsoup4`, `flask` (mock company only), `pytest`. No other external services. Built with AI assistance (Claude).
 
 ## Assumptions

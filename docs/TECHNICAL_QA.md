@@ -3,7 +3,7 @@
 **Why a text browser, not Playwright/computer-use?** Fast, cheap, deterministic, testable offline; text is easier for an
 LLM than pixels. Cost: no JS/visuals. `Browser` is a 5-method interface so Playwright drops in.
 
-**How does it decide the next step?** Claude sees task + environment briefing + working memory + last 3 observations in full
+**How does it decide the next step?** The LLM sees task + environment briefing + working memory + last 3 observations in full
 and picks one tool. Prompt teaches policy (retry/verify/ask); code enforces safety. Trace in `runs/<ts>/trace.jsonl`.
 
 **How does it handle a failing action?** Layered: GET retries in `browser._request`; errors returned as observations;

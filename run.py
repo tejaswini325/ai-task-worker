@@ -8,7 +8,7 @@ from pathlib import Path
 from worker.agent import Agent
 from worker.browser import Browser
 from worker.io import ConsoleIO
-from worker.llm import AnthropicLLM
+from worker.llm import make_llm
 from worker.tools import Toolbox
 
 
@@ -19,7 +19,8 @@ def main():
     ap.add_argument("--allow-host", action="append", help="hosts the browser may reach (default: 127.0.0.1)")
     ap.add_argument("--yes", action="store_true", help="auto-approve WRITE actions (non-interactive)")
     ap.add_argument("--max-steps", type=int, default=40)
-    ap.add_argument("--model")
+    ap.add_argument("--provider", choices=["groq", "anthropic"], default="groq")
+    ap.add_argument("--model", help="default: llama-3.3-70b-versatile (groq)")
     ap.add_argument("--no-mock", action="store_true", help="do not start the bundled mock company")
     ap.add_argument("--port", type=int, default=5001)
     a = ap.parse_args()
@@ -35,7 +36,7 @@ def main():
 
     io = ConsoleIO(auto_approve=a.yes)
     tb = Toolbox(Browser(a.allow_host or ["127.0.0.1"]), io, "workspace", run_dir)
-    res = Agent(AnthropicLLM(a.model), tb, env, io, a.max_steps).run(a.task)
+    res = Agent(make_llm(a.provider, a.model), tb, env, io, a.max_steps).run(a.task)
 
     print(f"\n{'=' * 60}\nSTATUS : {res.status.upper()}  ({res.steps} steps)\nSUMMARY: {res.summary}\nEVIDENCE:")
     for e in res.evidence:

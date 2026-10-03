@@ -144,6 +144,7 @@ class Toolbox:
 
     # ----------------------------------------------------------------- finish
     def t_finish(self, status, summary, evidence):
+        evidence = [evidence] if isinstance(evidence, str) else list(evidence or [])
         if status == "done":
             if self.dirty:
                 return ToolOutput("REJECTED: you wrote data but have not re-read the system of record since. Open the "
