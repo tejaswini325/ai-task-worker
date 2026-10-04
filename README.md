@@ -7,8 +7,6 @@ unsure, **verifies the outcome in the system of record**, and returns a summary 
 python run.py "Find the latest invoice from Globex Corporation in the vendor portal, record it as a bill in our internal ERP, and tell me once it's done."
 ```
 
-Docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) · [`docs/TECHNICAL_QA.md`](docs/TECHNICAL_QA.md) · [`SUBMISSION.md`](SUBMISSION.md)
-
 ## Setup (2 min)
 ```bash
 python -m venv .venv && source .venv/bin/activate
