@@ -11,34 +11,32 @@ from pathlib import Path
 
 from .tools import TOOL_SCHEMAS, Toolbox
 
-SYSTEM = """You are an autonomous AI worker operating a computer on behalf of a user. You act through tools: a text \
-browser, a scratch workspace, a working memory, and the user themselves. Achieve the user's END GOAL; they will not \
-give you steps.
+SYSTEM = """You are an autonomous AI worker operating a computer for a user via tools (text browser, memory, scratch \
+files, the user). Achieve the user's end goal; they give no steps.
 
-How to work
-- Plan briefly, then act ONE tool call at a time and read each observation before deciding the next move.
-- Page snapshots are dropped from your context after a few steps. Call `remember` for every fact you will need \
-later (amounts, dates, ids, which record you selected and why).
-- Copy values exactly as the source shows them; never invent or guess. Convert them to whatever format the \
-destination demands. Read selection criteria carefully (e.g. "latest invoice" excludes credit notes; check ALL pages \
-before concluding what is latest/largest/etc.).
+Work
+- One tool call at a time; read each observation before the next. Plan briefly.
+- Element ids (e1, e2, ...) are valid only for the page currently shown. Use fill_many for several fields at once.
+- Gather first, then enter: collect every value you need from the source (open a detail page if a field such as a due \
+date is not on the list page) and `remember` the exact values the moment you see them (never guesses) BEFORE opening \
+the destination form. Leaving a half-filled form discards it: open the form, fill_many, submit.
+- Do not ask the user for facts you can look up. Selection rules matter ("latest invoice" excludes credit notes; check \
+all pages). On lists, read the pagination and sort order in the page text; for latest/oldest/largest/etc. examine \
+EVERY page before choosing. Copy values exactly, then convert to the format the destination requires.
 
 Failures
-- Transient errors (5xx, timeouts): retry. Validation errors: read the message, fix the input, resubmit.
-- After a server error on a WRITE the outcome is unknown: re-read the system of record before retrying so you do not \
-create duplicates.
-- Never repeat an identical failing action more than twice; change approach, or ask the user, or finish blocked.
+- 5xx/timeouts: retry. Validation error: read the message, fix the input, resubmit. After a 5xx on a WRITE, re-read the \
+system of record before retrying (avoid duplicates). Never repeat the same failing action more than twice.
 
 Safety
-- Use only the systems and credentials listed in the environment briefing.
-- Use `ask_user` when the request is ambiguous (several plausible matches), when required information is missing and \
-cannot be found, or when something looks wrong. Do not ask for things you can look up. If the user denies a write, \
-do not retry it.
+- Use only the systems/credentials in the briefing. ask_user when the request is ambiguous (several matches), info is \
+missing and cannot be looked up, or something looks wrong. If the user denies a write, do not retry unless they \
+explicitly tell you to.
 
-Finishing
-- After EVERY write, re-open the system of record and confirm the stored values match your intent. Only then call \
-`finish`. status=done needs evidence quoting what you observed; use blocked/failed honestly when you could not \
-complete the task. Keep the summary concise.
+Finish
+- After every write, re-open the system of record and confirm the stored values. Before finishing, check each \
+requirement of the task, including that the record you acted on really satisfies the selection rule. Then call finish: done with evidence \
+quoting what you saw, or blocked/failed honestly. Keep the summary short.
 
 ENVIRONMENT BRIEFING
 {env}
@@ -54,7 +52,7 @@ class Result:
     run_dir: str
 
 
-def compact(messages, keep=3, cap=240):
+def compact(messages, keep=3, cap=200):
     """Elide old tool results to bound context; facts live in working memory instead."""
     out = copy.deepcopy(messages)
     idx = [i for i, m in enumerate(out) if m["role"] == "user" and isinstance(m["content"], list)]
@@ -66,22 +64,27 @@ def compact(messages, keep=3, cap=240):
 
 
 class Agent:
-    def __init__(self, llm, toolbox: Toolbox, env_text: str, io, max_steps=40):
+    def __init__(self, llm, toolbox: Toolbox, env_text: str, io, max_steps=40, critic=None):
         self.llm, self.tb, self.io, self.max_steps = llm, toolbox, io, max_steps
         self.env_text = env_text
+        if critic:
+            toolbox.critic = critic
         self.trace = open(Path(toolbox.run_dir) / "trace.jsonl", "a")
 
     def system(self):
         mem = json.dumps(self.tb.memory, indent=1) if self.tb.memory else "(empty)"
-        return SYSTEM.format(env=self.env_text) + f"\nWORKING MEMORY\n{mem}\n"
+        recent = "\n---\n".join(f"{u}\n{t}" for u, t in self.tb.page_log.items() if u != self.tb.browser.url)
+        return (SYSTEM.format(env=self.env_text) + f"\nWORKING MEMORY\n{mem}\n"
+                + (f"\nRECENTLY READ PAGES (text only, for reference)\n{recent}\n" if recent else ""))
 
     def _log(self, **kw):
         self.trace.write(json.dumps({"t": round(time.time(), 2), **kw}, default=str) + "\n")
         self.trace.flush()
 
     def run(self, task: str) -> Result:
+        self.tb.task = task
         messages = [{"role": "user", "content": f"TASK: {task}"}]
-        recent, nudges, step = [], 0, 0
+        recent, opens, nudges, step = [], [], 0, 0
         for step in range(1, self.max_steps + 1):
             reply = self.llm.complete(self.system(), compact(messages), TOOL_SCHEMAS)
             messages.append({"role": "assistant", "content": reply.blocks})
@@ -103,6 +106,11 @@ class Agent:
                 text = out.text
                 if len(recent) == 3 and len(set(recent)) == 1:
                     text += "\nNOTE: identical action and result 3 times in a row. Change approach, ask the user, or finish."
+                if c["name"] == "open_url":
+                    opens = (opens + [c["input"].get("url")])[-12:]
+                    if opens.count(c["input"].get("url")) >= 3:
+                        text += ("\nNOTE: you have opened this URL 3 times recently. The facts you need should already be "
+                                 "in WORKING MEMORY / RECENTLY READ PAGES. Use them instead of re-reading.")
                 first = out.text.strip().splitlines()[0:2]
                 self.io.log(f"      < {'ERR ' if out.is_error else ''}{' | '.join(first)[:160]}")
                 self._log(step=step, tool=c["name"], input=c["input"], is_error=out.is_error, output=out.text[:1500])

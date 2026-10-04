@@ -19,4 +19,4 @@ class ConsoleIO:
         if self.auto_approve:
             print("  (auto-approved via --yes)")
             return True
-        return input("  approve? [y/N]> ").strip().lower() in ("y", "yes")
+        return input("  type y + Enter to approve (anything else denies)> ").strip().lower() in ("y", "yes")

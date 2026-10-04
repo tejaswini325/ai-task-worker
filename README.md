@@ -13,14 +13,15 @@ Docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/DEMO_SCRIPT.md`](
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export GROQ_API_KEY=gsk_...                 # free key: console.groq.com; default model llama-3.3-70b-versatile
+export GROQ_API_KEY=gsk_...                 # free key: console.groq.com; model auto-selected
 make demo1                                  # or: python run.py "<task>"  — starts the bundled mock company on :5001 and runs the agent
-pytest -q                                   # 9 tests (harness + LLM adapter), no API key needed
+pytest -q                                   # 22 tests (harness + LLM adapter), no API key needed
 ```
 Flags: `--provider groq|anthropic`, `--model <id>` (or `WORKER_MODEL`), `--yes` auto-approve writes (default asks `y/N`), `--no-mock` point at your own sandbox, `--max-steps`, `--env`.
-Groq notes: the free tier has per-minute token limits; the SDK auto-backs-off on 429s, so a run may pause briefly. If a model
+Groq notes: model ids on Groq change; by default the worker picks one your key can use. See them with `python run.py --list-models`
+and force one with `--model <id>`.  the free tier has per-minute token limits; the SDK auto-backs-off on 429s, so a run may pause briefly. If a model
 misbehaves with tools, try `--model` with another Groq tool-capable model. Malformed tool calls are re-sampled automatically.
-Every run writes `runs/<ts>/trace.jsonl` (every action + observation), `final_page.txt`, `result.json`.
+Quota: each Groq model has its own daily token quota. If one is exhausted the worker prints a notice and switches to the next\navailable model automatically; per-minute limits are waited out. A 30-step run uses roughly 60–90k tokens.\nEvery run writes `runs/<ts>/trace.jsonl` (every action + observation), `final_page.txt`, `result.json`.
 `python -m mockcorp.app` serves the mock company for manual poking.
 
 ## Demo script (3 scenarios, all against the sandbox)
@@ -57,6 +58,10 @@ Every run writes `runs/<ts>/trace.jsonl` (every action + observation), `final_pa
 * **Verification.** The runtime tracks a `dirty` flag set by any successful/uncertain write and cleared only by
   re-reading a page. `finish(status="done")` is *rejected* while dirty or without evidence, so "done" can't be claimed
   from the model's belief alone. The final page snapshot is saved as evidence.
+* **Independent pre-write reviewer** (`worker/critic.py`). Before a WRITE reaches you for approval, a separate LLM call with fresh
+  context checks every field against the pages the worker actually read (right field? right record? only reformatted?). Concerns
+  block the write and are returned to the agent; if it resubmits unchanged, the concern is shown to *you* in the approval prompt.
+  Fails open if the model is unavailable. Disable with `--no-critic`.
 * **Human in the loop.** Any non-login POST (or element tagged `data-risk`) is a WRITE → shows the exact payload and
   needs approval. `ask_user` for ambiguity/missing info. Denied writes are final.
 * **Safety.** Host allow-list on every request and redirect, passwords masked in approvals/snapshots, file tools
@@ -74,7 +79,7 @@ Every run writes `runs/<ts>/trace.jsonl` (every action + observation), `final_pa
 * **No framework** (LangChain etc.) – ~600 lines I can fully explain and modify live.
 
 ## Models / services / libraries
-Groq API (free tier) via the `groq` SDK, OpenAI-style tool calling, default model `llama-3.3-70b-versatile` (swappable with `--model`; an Anthropic adapter is included but optional), `requests`,
+Groq API (free tier) via the `groq` SDK, OpenAI-style tool calling, model auto-selected from what your key can access (prefers `openai/gpt-oss-120b`; override with `--model`; an Anthropic adapter is included but optional), `requests`,
 `beautifulsoup4`, `flask` (mock company only), `pytest`. No other external services. Built with AI assistance (Claude).
 
 ## Assumptions
@@ -82,6 +87,10 @@ Sandbox systems are plain server-rendered HTML; credentials are provided in `env
 "latest" = most recent issue date among invoices (credit notes excluded); the user is available for approvals.
 
 ## Known limitations
+* **Verification checks that the write persisted, not that the *right record* was chosen.** Observed in testing: a small model
+  (gpt-oss-20b) stopped at page 1 of 2 and recorded INV-1012 instead of the latest INV-1019, then correctly reported
+  "done". Mitigations added: pagination notes in observations, prompt rules on selection criteria, a bigger default model.
+  Added the pre-write reviewer for this; a post-write verifier that re-derives the expected record independently is the next step.
 * No JavaScript execution, file downloads/PDF parsing, CAPTCHAs/MFA, or visual understanding.
 * Approval is per submission, so a rejected-then-corrected write asks again (safe but chatty).
 * Write detection is a heuristic (POST without password field); GET-based mutations would be missed.
@@ -91,7 +100,7 @@ Sandbox systems are plain server-rendered HTML; credentials are provided in `env
 
 ## What I'd build next
 Playwright backend (JS, uploads, downloads) with screenshot fallback · PDF/email/API tools · risk-tiered approvals
-(approve a *diff*/policy, e.g. "bills < X auto-OK") · independent verifier step (second model/rule checks evidence
-against task) · persistent memory + reusable "skills" learned from successful runs · idempotency keys and audit log ·
+(approve a *diff*/policy, e.g. "bills < X auto-OK") · independent verifier step (second model/rule checks the chosen record
+against the task's selection rule) · persistent memory + reusable "skills" learned from successful runs · idempotency keys and audit log ·
 secrets vault + per-task scoped credentials · task queue, retries/resume from checkpoint, evals suite with
 fault-injection scenarios, observability dashboard.

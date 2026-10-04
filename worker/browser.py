@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-MAX_TEXT = 3500
+MAX_TEXT = 2500
 MAX_ELEMENTS = 70
 
 
@@ -84,8 +84,9 @@ class Browser:
 
     def element(self, eid):
         if eid not in self.elements:
-            raise BrowserError(f"No element {eid!r} on the current page. Ids are renumbered on every page load; "
-                               "use ids from the most recent page snapshot.")
+            now = "; ".join(f'{e.id}={e.kind} "{e.label[:30]}"' for e in list(self.elements.values())[:15]) or "none"
+            raise BrowserError(f"No element {eid!r} on the current page ({self.url}). Ids are renumbered on every "
+                               f"page load. Elements here: {now}.")
         return self.elements[eid]
 
     def fill(self, eid, value):
@@ -126,6 +127,12 @@ class Browser:
         if el.tag.get("name"):
             data[el.tag["name"]] = el.tag.get("value", "")
         return method, action, data
+
+    def labeled_payload(self, el, data):
+        form = el.tag.find_parent("form")
+        labels = {e.name: e.label for e in self.elements.values()
+                  if e.kind in ("input", "select") and e.name and e.tag.find_parent("form") is form}
+        return {labels.get(k, k): v for k, v in data.items()}
 
     def click(self, el):
         if el.kind == "link":
